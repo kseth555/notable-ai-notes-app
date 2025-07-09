@@ -1,21 +1,4 @@
-Ah, I see! The issue is that you **pasted it into a `.md` file**, but **your formatting lost the Markdown syntax**. GitHub only understands proper **Markdown**, which needs specific characters like:
 
-* `#` for headings
-* `*` or `-` for bullet points
-* Backticks (\`\`\`) for code blocks
-* No emojis or `>` alone for section titles unless used properly
-
----
-
-### ✅ Here's What You Should Do:
-
-1. **Replace the entire content** of your current `README.md` file with the correctly formatted version **below** (this one is clean Markdown with proper syntax).
-
-2. **Save and push it to GitHub** – it will render beautifully.
-
----
-
-### ✅ Clean Markdown Version (copy-paste this directly into `README.md`):
 
 ````markdown
 # 🧠 NOTABLE: The Intelligent Notes-Taking App
