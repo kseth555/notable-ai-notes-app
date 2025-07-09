@@ -1,6 +1,4 @@
 
-
-````markdown
 # 🧠 NOTABLE: The Intelligent Notes-Taking App
 
 > *Where your notes get smarter.*
@@ -190,3 +188,13 @@ Huge thanks to the creators of:
 
 ```
 
+---
+
+### ✅ Now you're good to go!
+Paste this into `README.md`, save it, and it’ll render perfectly on GitHub.
+
+Want help adding:
+- A **GIF or screenshot** of the app?
+- A **badge row** (Tech stack, License, Deployed on, etc.)?
+Let me know!
+```
