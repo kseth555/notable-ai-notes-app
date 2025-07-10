@@ -35,11 +35,8 @@ function App() {
   }, [auth]);
 
   useEffect(() => {
-    if (isDarkMode) {
-      document.body.classList.add('dark-mode');
-    } else {
-      document.body.classList.remove('dark-mode');
-    }
+    // Apply the correct class to the body
+    document.body.className = isDarkMode ? 'dark-mode' : 'light-mode';
   }, [isDarkMode]);
 
   const toggleDarkMode = () => {

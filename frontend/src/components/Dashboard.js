@@ -4,8 +4,12 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { Calendar, momentLocalizer } from 'react-big-calendar';
+import moment from 'moment';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const API_URL = process.env.REACT_APP_API_URL;
+const localizer = momentLocalizer(moment);
 
 const isQuillEmpty = (value) => {
   if (!value || value.trim() === '<p><br></p>' || value.trim() === '') {
@@ -34,6 +38,7 @@ const formatDate = (dateString) => {
 const Dashboard = ({ user }) => {
     const [notes, setNotes] = useState([]);
     const [folders, setFolders] = useState([]);
+    const [tasks, setTasks] = useState([]);
     const [currentNote, setCurrentNote] = useState(null);
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
@@ -41,12 +46,15 @@ const Dashboard = ({ user }) => {
     const [aiResult, setAiResult] = useState('');
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [saveStatus, setSaveStatus] = useState('Saved');
+    const [isSaveDisabled, setIsSaveDisabled] = useState(true);
     
     const [activeTool, setActiveTool] = useState(null);
     const [mainView, setMainView] = useState('editor');
 
-    const debounceTimeout = useRef(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [taskTitle, setTaskTitle] = useState('');
+    const [newNoteFolderId, setNewNoteFolderId] = useState(null);
 
     const getAuthHeaders = useCallback(() => ({
         headers: { userid: user.uid }
@@ -54,80 +62,45 @@ const Dashboard = ({ user }) => {
 
     const fetchData = useCallback(async () => {
         setLoading(true);
-        try {
-            const [notesResponse, foldersResponse] = await Promise.all([
-                axios.get(`${API_URL}/notes`, getAuthHeaders()),
-                axios.get(`${API_URL}/folders`, getAuthHeaders())
-            ]);
-            setNotes(notesResponse.data);
-            setFolders(foldersResponse.data);
-        } catch (error) {
-            console.error("Error fetching data:", error);
-        } finally {
-            setLoading(false);
+        const headers = getAuthHeaders();
+        const requests = [
+            axios.get(`${API_URL}/notes`, headers),
+            axios.get(`${API_URL}/folders`, headers),
+            axios.get(`${API_URL}/tasks`, headers)
+        ];
+        const results = await Promise.allSettled(requests);
+
+        if (results[0].status === 'fulfilled') setNotes(results[0].value.data);
+        if (results[1].status === 'fulfilled') setFolders(results[1].value.data);
+        if (results[2].status === 'fulfilled') {
+            const formattedTasks = results[2].value.data.map(task => ({
+                ...task,
+                start: new Date(task.date),
+                end: new Date(task.date),
+            }));
+            setTasks(formattedTasks);
         }
+        setLoading(false);
     }, [getAuthHeaders]);
 
     useEffect(() => {
         if (user) fetchData();
     }, [user, fetchData]);
 
-    // Auto-save logic
+    // This hook now only controls the save button's disabled state
     useEffect(() => {
-        if (!currentNote) return;
-
-        setSaveStatus('Unsaved changes...');
-        
-        if (debounceTimeout.current) {
-            clearTimeout(debounceTimeout.current);
-        }
-
-        debounceTimeout.current = setTimeout(async () => {
-            if (isQuillEmpty(content) || !title.trim()) {
-                return;
-            }
-            
-            setSaveStatus('Saving...');
-            const noteData = { 
-                title, 
-                content, 
-                characterCount: countCharacters(content),
-                folderId: currentNote.folderId
-            };
-            try {
-                await axios.put(`${API_URL}/notes/${currentNote._id}`, noteData, getAuthHeaders());
-                setSaveStatus('Saved');
-                fetchData();
-            } catch (error) {
-                console.error("Auto-save failed:", error);
-                setSaveStatus('Save failed');
-            }
-        }, 1500);
-
-        return () => {
-            clearTimeout(debounceTimeout.current);
-        };
-    }, [title, content, currentNote, getAuthHeaders, fetchData]);
+        setIsSaveDisabled(!title.trim() || isQuillEmpty(content));
+    }, [title, content]);
 
 
-    const handleNewNote = async (folderId = null) => {
-        const newTitle = "Untitled Note";
-        const newContent = "";
-        const noteData = {
-            title: newTitle,
-            content: newContent,
-            characterCount: 0,
-            folderId: folderId
-        };
-        try {
-            const response = await axios.post(`${API_URL}/notes`, noteData, getAuthHeaders());
-            await fetchData();
-            handleSelectNote(response.data);
-            setMainView('editor');
-        } catch (error) {
-            console.error("Error creating new note:", error);
-            alert("Failed to create a new note.");
-        }
+    const handleNewNote = (folderId = null) => {
+        setCurrentNote(null); // This signifies a new note
+        setTitle('Untitled Note');
+        setContent('');
+        setActiveTool(null);
+        setAiResult('');
+        setMainView('editor');
+        setNewNoteFolderId(folderId); // Remember which folder to save in
     };
 
     const handleSelectNote = (note) => {
@@ -137,6 +110,39 @@ const Dashboard = ({ user }) => {
         setActiveTool(null);
         setAiResult('');
         setMainView('editor');
+        setNewNoteFolderId(null);
+    };
+
+    // --- FIX: Reverted to a stable manual save function ---
+    const handleSaveNote = async () => {
+        if (isSaveDisabled) return;
+        
+        const noteData = { 
+            title, 
+            content, 
+            characterCount: countCharacters(content),
+            folderId: currentNote ? currentNote.folderId : newNoteFolderId 
+        };
+
+        try {
+            setLoading(true);
+            if (currentNote) {
+                // Update existing note
+                await axios.put(`${API_URL}/notes/${currentNote._id}`, noteData, getAuthHeaders());
+            } else {
+                // Create new note
+                const response = await axios.post(`${API_URL}/notes`, noteData, getAuthHeaders());
+                setCurrentNote(response.data); // Set the new note as the current one
+            }
+            await fetchData();
+            alert('Note saved successfully!');
+        } catch (error) {
+            console.error("Error saving note:", error);
+            alert('Failed to save note.');
+        } finally {
+            setLoading(false);
+            setNewNoteFolderId(null); // Reset folder context
+        }
     };
 
     const handleDeleteNote = async (noteId) => {
@@ -144,13 +150,8 @@ const Dashboard = ({ user }) => {
             try {
                 await axios.delete(`${API_URL}/notes/${noteId}`, getAuthHeaders());
                 fetchData();
-                if (currentNote && currentNote._id === noteId) {
-                    setCurrentNote(null);
-                    setTitle('');
-                    setContent('');
-                }
+                if (currentNote && currentNote._id === noteId) setCurrentNote(null);
             } catch (error) {
-                console.error("Error deleting note:", error);
                 alert('Failed to delete note.');
             }
         }
@@ -163,8 +164,36 @@ const Dashboard = ({ user }) => {
                 await axios.post(`${API_URL}/folders`, { name: folderName }, getAuthHeaders());
                 fetchData();
             } catch (error) {
-                console.error("Error creating folder:", error);
                 alert("Failed to create folder.");
+            }
+        }
+    };
+
+    const handleSelectSlot = useCallback((slotInfo) => {
+        setSelectedDate(slotInfo.start);
+        setIsModalOpen(true);
+    }, []);
+
+    const handleCreateTask = async (e) => {
+        e.preventDefault();
+        if (!taskTitle.trim()) return;
+        try {
+            await axios.post(`${API_URL}/tasks`, { title: taskTitle, date: selectedDate }, getAuthHeaders());
+            setTaskTitle('');
+            setIsModalOpen(false);
+            fetchData();
+        } catch (error) {
+            alert("Failed to create task.");
+        }
+    };
+
+    const handleDeleteTask = async (task) => {
+        if (window.confirm(`Are you sure you want to delete the task: "${task.title}"?`)) {
+            try {
+                await axios.delete(`${API_URL}/tasks/${task._id}`, getAuthHeaders());
+                fetchData();
+            } catch (error) {
+                alert("Failed to delete task.");
             }
         }
     };
@@ -221,7 +250,6 @@ const Dashboard = ({ user }) => {
             handleSelectNote(response.data);
             alert('AI result saved as a new note!');
         } catch (error) {
-            console.error("Error saving AI result as note:", error);
             alert('Failed to save AI result.');
         }
     };
@@ -287,7 +315,8 @@ const Dashboard = ({ user }) => {
             />
             <div className="status-bar">
                 <span className="char-count">{countCharacters(content)} characters</span>
-                <span className="save-status">{saveStatus}</span>
+                 {/* --- Re-added Save Button --- */}
+                <button className="save-note-btn-main" onClick={handleSaveNote} disabled={isSaveDisabled}>Save</button>
             </div>
         </div>
     );
@@ -312,6 +341,21 @@ const Dashboard = ({ user }) => {
                     </button>
                 </div>
             )}
+        </div>
+    );
+
+    const renderCalendarView = () => (
+        <div className="calendar-container">
+            <Calendar
+                localizer={localizer}
+                events={tasks}
+                startAccessor="start"
+                endAccessor="end"
+                style={{ height: '100%' }}
+                selectable
+                onSelectSlot={handleSelectSlot}
+                onSelectEvent={handleDeleteTask}
+            />
         </div>
     );
 
@@ -384,10 +428,11 @@ const Dashboard = ({ user }) => {
                     <div className="view-switcher-buttons">
                         <button onClick={() => setMainView('editor')} className={mainView === 'editor' ? 'active' : ''}>Editor</button>
                         <button onClick={() => setMainView('solver')} className={mainView === 'solver' ? 'active' : ''}>Question Solver</button>
+                        <button onClick={() => setMainView('calendar')} className={mainView === 'calendar' ? 'active' : ''}>Calendar</button>
                     </div>
                 </div>
 
-                {mainView === 'editor' && currentNote && renderEditorView()}
+                {mainView === 'editor' && renderEditorView()}
                 {mainView === 'editor' && !currentNote && (
                     <div className="no-note-selected">
                         <h2>Select a note to get started</h2>
@@ -395,7 +440,29 @@ const Dashboard = ({ user }) => {
                     </div>
                 )}
                 {mainView === 'solver' && renderSolverView()}
+                {mainView === 'calendar' && renderCalendarView()}
             </div>
+
+            {isModalOpen && (
+                <div className="modal-overlay">
+                    <div className="modal-content">
+                        <h3>New Task for {moment(selectedDate).format('MMMM Do,YYYY')}</h3>
+                        <form onSubmit={handleCreateTask}>
+                            <input
+                                type="text"
+                                placeholder="Task title..."
+                                value={taskTitle}
+                                onChange={(e) => setTaskTitle(e.target.value)}
+                                autoFocus
+                            />
+                            <div className="modal-actions">
+                                <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
+                                <button type="submit">Create Task</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -24,7 +24,7 @@ mongoose.connect(process.env.MONGODB_URI)
 // --- FIX: Added the new route for folders ---
 app.use('/api/notes', require('./routes/notes'));
 app.use('/api/folders', require('./routes/folders')); // This line activates the folder API
-
+app.use('/api/tasks', require('./routes/tasks'));
 app.listen(port, () => {
   console.log(`Server is running on port: ${port}`);
 });
