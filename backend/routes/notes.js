@@ -28,12 +28,13 @@ router.get('/', authenticate, async (req, res) => {
 
 // POST a new note
 router.post('/', authenticate, async (req, res) => {
-  const { title, content, characterCount } = req.body;
+  const { title, content, characterCount, folderId } = req.body;
   const note = new Note({
     userId: req.userId,
     title,
     content,
     characterCount,
+    folderId: folderId || null,
   });
 
   try {
@@ -58,10 +59,10 @@ router.get('/:id', authenticate, async (req, res) => {
 // PUT (update) a note
 router.put('/:id', authenticate, async (req, res) => {
     try {
-        const { title, content, characterCount } = req.body;
+        const { title, content, characterCount, folderId } = req.body;
         const updatedNote = await Note.findOneAndUpdate(
             { _id: req.params.id, userId: req.userId },
-            { title, content, characterCount, updatedAt: Date.now() },
+            { title, content, characterCount, folderId: folderId, updatedAt: Date.now() },
             { new: true }
         );
         if (!updatedNote) return res.status(404).json({ message: 'Note not found' });
@@ -91,7 +92,6 @@ router.post('/summarize', authenticate, async (req, res) => {
   }
 
   try {
-    // --- NEW, IMPROVED PROMPT ---
     const prompt = `
 You are an expert summarization assistant. Analyze the following note and provide a structured summary. Your response should be formatted exactly as follows, using Markdown for headers and bullet points:
 
@@ -110,13 +110,16 @@ Here is the note to summarize:
 ${content}
 ---
 `;
-
     const result = await model.generateContent(prompt);
     const response = await result.response;
     res.json({ summary: response.text() });
   } catch (error) {
+    // --- FIX: More robust check for the 503 error ---
+    if (error.message && error.message.includes('503')) {
+        return res.status(503).json({ message: "The AI model is currently overloaded. Please try again in a moment." });
+    }
     console.error("Error with Gemini API:", error);
-    res.status(500).json({ message: 'Error summarizing text', error: error.message });
+    res.status(500).json({ message: 'An unknown error occurred while summarizing.', error: error.message });
   }
 });
 
@@ -133,6 +136,9 @@ router.post('/solve', authenticate, async (req, res) => {
     const response = await result.response;
     res.json({ answer: response.text() });
   } catch (error) {
+    if (error.message && error.message.includes('503')) {
+        return res.status(503).json({ message: "The AI model is currently overloaded. Please try again in a moment." });
+    }
     res.status(500).json({ message: 'Error solving question', error: error.message });
   }
 });

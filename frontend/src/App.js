@@ -53,7 +53,11 @@ function App() {
   return (
     <Router>
       <div className="App">
-        <Navbar user={user} />
+        <Navbar 
+          user={user} 
+          isDarkMode={isDarkMode}
+          toggleDarkMode={toggleDarkMode}
+        />
         <main>
           <Routes>
             <Route path="/login" element={!user ? <Auth /> : <Navigate to="/dashboard" />} />
@@ -63,8 +67,6 @@ function App() {
                 user ? (
                   <Dashboard 
                     user={user} 
-                    isDarkMode={isDarkMode} 
-                    toggleDarkMode={toggleDarkMode} 
                   />
                 ) : (
                   <Navigate to="/login" />

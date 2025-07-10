@@ -13,12 +13,17 @@ const NoteSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  // --- UPDATED FIELD ---
   characterCount: {
     type: Number,
     default: 0,
   },
-  // ---------------------
+  // --- NEW FIELD TO LINK NOTE TO A FOLDER ---
+  folderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Folder',
+    default: null, // Notes can exist outside folders
+  },
+  // -----------------------------------------
   createdAt: {
     type: Date,
     default: Date.now,
